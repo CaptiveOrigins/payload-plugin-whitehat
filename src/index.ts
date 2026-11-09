@@ -7,6 +7,7 @@
  */
 export { payloadReadPaths, type PayloadReadOptions } from './payload.js'
 export { formatReport } from './report.js'
+export { forgedCredentials, runCredentialCheck, type CredentialTarget, type Forgery, type TargetResponse } from './credentials.js'
 
 export type Severity = 'critical' | 'high' | 'medium' | 'low' | 'info'
 export const SEVERITIES: Severity[] = ['critical', 'high', 'medium', 'low', 'info']

@@ -11,6 +11,7 @@ Default severities: critical (data or accounts at risk now), high (private data 
 | private-relations | A related record the reader can't see doesn't leak its id or fields through the record that refers to it (regression, 2026-11-09) | high | automated (canary) |
 | refusal-oracle | A refusal's message doesn't answer a question about records the person can't see (regression, 2026-11-09) | high | automated (write probe) |
 | trusted-api-writes | REST, GraphQL and admin writes run the same checks as the Local API with access on (regression, 2026-11-09) | high | automated (write probe) |
+| untrusted-credentials | Pages, routes, endpoints, server actions and gates verify a session instead of trusting its presence: fake, expired, malformed and foreign session cookies, forged role, tenant or preview cookies, forged x-forwarded-* and Vercel bypass headers get nothing more than a signed-out visitor (regression: a maintenance gate that let any `payload-token` cookie through, 2026-11-09) | high if data or an action; medium for a courtesy gate | automated |
 | headers | Security headers: CSP, framing, nosniff, referrer, permissions, HSTS | medium | planned |
 | cookies | Session cookies are Secure, HttpOnly and SameSite | high | planned |
 | cors | CORS and CSRF origins are a short, explicit list | medium | planned |

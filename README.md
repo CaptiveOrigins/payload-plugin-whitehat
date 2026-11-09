@@ -7,6 +7,7 @@ Whitehat for Payload: finds security holes in a Payload site, its database, code
 ## What it does
 
 - **Access check.** You declare *canaries*: records only some roles may see, each carrying a unique marker. Whitehat signs in as every role you give it and looks for the marker on every read path: list and by-id reads at depths 0 to 2 (`payloadReadPaths`), plus any REST or GraphQL paths you add through your route handlers. You also declare *forbidden writes*: things a role must not be able to do. It tries each one, and fails it if it's allowed, or if the refusal's message says something it mustn't.
+- **Untrusted credentials.** `runCredentialCheck` asks each page, endpoint, action or gate you list as a signed-out visitor, then again with forged credentials (fake, expired, malformed and foreign session cookies; forged role, tenant or preview cookies you name; forged `x-forwarded-*` and Vercel bypass headers). A forgery that gets more than the signed-out request is a finding: high if data or an action is behind it, medium for a courtesy gate.
 - **Findings** are ranked critical, high, medium, low or info, and each says how it was found and how to reproduce it. A check that can't run is reported as **not checked**, never as passed.
 - **It only finds.** It never fixes anything, changes data or settings, or touches anything outside the site you run it against.
 
