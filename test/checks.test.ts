@@ -49,6 +49,11 @@ describe('checklist checks', () => {
     expect((await checkAdminExposure(site(() => ({})), 'https://site.example/admin'))[0]!.status).toBe('fail')
   })
 
+  it('open redirects: a Location that can’t be read is not checked, never passed', async () => {
+    const [f] = await checkOpenRedirects(async () => ({ status: 302, headers: { location: 'http://[' } }), ['https://site.example/go?to=x'], ['site.example'])
+    expect(f).toMatchObject({ status: 'not-checked' })
+  })
+
   it('a check whose request fails is not checked, never passed', async () => {
     const down: Ask = async () => {
       throw new Error('connection refused')
@@ -83,7 +88,10 @@ describe('checklist checks', () => {
       { collection: 'posts', id: '5', field: 'body', value: 'A care sheet about javascript-free feeding schedules and onions.' },
     ]
     const out = scanUserContent(items)
-    expect(out.map((f) => f.path)).toEqual(['posts/1 · body', 'animals/2 · notes', 'links/3 · url', 'links/4 · url'])
+    expect(out.filter((f) => f.status === 'fail').map((f) => f.path)).toEqual(['posts/1 · body', 'animals/2 · notes', 'links/3 · url', 'links/4 · url'])
+    // Always a summary, so a clean scan still reports something.
+    expect(out[0]).toMatchObject({ check: 'stored-xss-scan', status: 'pass', how: 'Scanned 5 fields.' })
+    expect(scanUserContent([])).toHaveLength(1)
     expect(JSON.stringify(out)).not.toContain('steal()')
   })
 })

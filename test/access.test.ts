@@ -36,10 +36,13 @@ const loopLeak = (fixed: boolean): ForbiddenWrite => ({
   title: 'Proposing a private animal as a parent reveals whether it descends from yours',
   role: 'keeper-a',
   leaks: /descend|loop/i,
+  // The site refuses this as a validation error on the field (HTTP 400), not a 403.
+  refusal: /invalid: parentage\.parents/,
   severity: 'high',
   reproduce: 'As keeper A, PATCH your animal with parentage.parents = [the private animal]; read the error.',
   attempt: async () => {
     throw Object.assign(new Error('The following field is invalid: parentage.parents'), {
+      status: 400,
       data: { errors: [{ message: fixed ? 'A parent does not exist or you cannot access it.' : 'This parent already descends from the individual; the pedigree would loop.' }] },
     })
   },
@@ -75,6 +78,38 @@ describe('access check', () => {
     const findings = await runAccessCheck({ viewers, canaries: [broken, { ...broken, id: 'short', marker: 'x' }], writes: [{ id: 'nobody', title: 'No viewer', role: 'ghost', attempt: async () => null }] })
     expect(findings.every((f) => f.status === 'not-checked')).toBe(true)
     expect(findings.find((f) => f.check === 'c')!.how).toMatch(/timeout/)
+  })
+
+  it('counts only a real refusal as refused: any other error is not checked, never passed', async () => {
+    const write = (id: string, error: object, extra: Partial<ForbiddenWrite> = {}): ForbiddenWrite => ({ id, title: id, role: 'keeper-a', attempt: async () => Promise.reject(Object.assign(new Error((error as { message?: string }).message ?? 'no'), error)), ...extra })
+    const found = await runAccessCheck({
+      viewers,
+      writes: [
+        write('forbidden', { status: 403, message: 'You are not allowed to perform this action.' }),
+        write('unauthorized', { name: 'UnauthorizedError', message: 'Unauthorized' }),
+        // An allowed write that failed for another reason looks just like this: it mustn't pass.
+        write('missing-field', { status: 400, message: 'The following field is invalid: name' }),
+        write('broken-probe', { message: 'fetch failed' }),
+        write('says-too-much', { status: 400, message: 'That animal descends from yours' }, { leaks: /descends/ }),
+      ],
+    })
+    const by = Object.fromEntries(found.map((f) => [f.check, f.status]))
+    expect(by).toEqual({ forbidden: 'pass', unauthorized: 'pass', 'missing-field': 'not-checked', 'broken-probe': 'not-checked', 'says-too-much': 'fail' })
+    expect(found.find((f) => f.check === 'missing-field')!.how).toMatch(/HTTP 400.*refusal/)
+  })
+
+  it('says “not checked” for a canary nobody could look for: no paths, nobody outside it, or an answer that isn’t text', async () => {
+    const circular: Record<string, unknown> = {}
+    circular.self = circular
+    const found = await runAccessCheck({
+      viewers,
+      canaries: [
+        { id: 'no-paths', title: 'No paths', marker: 'marker-123456', visibleTo: [], paths: [] },
+        { id: 'everyone', title: 'Everyone sees it', marker: 'marker-123456', visibleTo: viewers.map((v) => v.role), paths: [{ name: 'GET /x', read: async () => ({}) }] },
+        { id: 'circular', title: 'Circular answer', marker: 'marker-123456', visibleTo: ['staff', 'keeper-a', 'keeper-b'], paths: [{ name: 'GET /y', read: async () => circular }] },
+      ],
+    })
+    expect(found.map((f) => [f.check, f.status])).toEqual([['circular', 'not-checked'], ['everyone', 'not-checked'], ['no-paths', 'not-checked']])
   })
 
   it('puts failures first, worst first, and reports plainly', async () => {
