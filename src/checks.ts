@@ -81,12 +81,14 @@ export function checkOpenRedirects(ask: Ask, urls: string[], ownHosts: string[])
         const loc = header(a, 'location')
         let external = false
         if (loc && a.status >= 300 && a.status < 400) {
+          let host: string
           try {
-            const host = new URL(loc, url).host
-            external = !ownHosts.includes(host)
+            host = new URL(loc, url).host
           } catch {
-            external = false
+            // A browser may still follow a Location we can't read: say so rather than call it safe.
+            return [unchecked('open-redirect', 'Redirects stay on the site', 'medium', url, new Error(`the Location header (${loc.slice(0, 80)}) couldn't be read as a URL`))]
           }
+          external = !ownHosts.includes(host)
         }
         return [f('open-redirect', 'Redirects stay on the site', 'medium', !external, url, external ? `It redirected to ${loc}.` : 'It didn’t redirect off the site.', `curl -sI '${url}'`)]
       }),
@@ -160,7 +162,8 @@ export const CONTENT_PATTERNS: { name: string; re: RegExp }[] = [
   { name: 'SVG with script', re: /<\s*svg\b[^>]*>[\s\S]*<\s*script\b/i },
 ]
 export function scanUserContent(items: { collection: string; id: string; field: string; value: unknown }[]): Finding[] {
-  const out: Finding[] = []
+  // Always one summary, so a clean scan still reports something (and old alerts resolve when the suite runs in full).
+  const out: Finding[] = [{ check: 'stored-xss-scan', title: 'User-written text was scanned', severity: 'info', status: 'pass', role: 'content', path: 'all', how: `Scanned ${items.length} field${items.length === 1 ? '' : 's'}.` }]
   for (const it of items) {
     const text = typeof it.value === 'string' ? it.value : JSON.stringify(it.value ?? '')
     for (const p of CONTENT_PATTERNS) {

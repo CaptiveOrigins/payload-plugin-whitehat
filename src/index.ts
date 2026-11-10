@@ -9,7 +9,7 @@ export { payloadReadPaths, type PayloadReadOptions } from './payload.js'
 export { formatReport } from './report.js'
 export { forgedCredentials, runCredentialCheck, type CredentialTarget, type Forgery, type TargetResponse } from './credentials.js'
 export { checkAdminExposure, checkClientSecrets, checkCookies, checkCors, checkGraphql, checkHeaders, checkOpenRedirects, checkUploads, scanUserContent, CONTENT_PATTERNS, SECRET_PATTERNS, type Answer, type Ask } from './checks.js'
-export { fingerprint, recordFindings, retest, runSuite, whitehat, type Suite, type WhitehatOptions } from './alerts.js'
+export { fingerprint, recordFindings, retest, runSuite, whitehat, type Suite, type WhitehatOptions, type WriteSuite } from './alerts.js'
 
 export type Severity = 'critical' | 'high' | 'medium' | 'low' | 'info'
 export const SEVERITIES: Severity[] = ['critical', 'high', 'medium', 'low', 'info']
@@ -46,6 +46,13 @@ export type ForbiddenWrite = {
   role: string
   attempt: (viewer: Viewer) => Promise<unknown>
   leaks?: RegExp
+  /**
+   * What a proper refusal looks like. Default: HTTP 401 or 403 (Payload's Forbidden and UnauthorizedError). Any
+   * other error (a validation error from a missing field, a broken probe) is "not-checked", never "pass", because
+   * an allowed write that fails for another reason looks the same as a refused one. Give a pattern (matched against
+   * the error's message and data) or a function when the site refuses some other way, e.g. a 400 naming the field.
+   */
+  refusal?: RegExp | ((error: unknown) => boolean)
   severity?: Severity
   reproduce?: string
 }
@@ -62,12 +69,22 @@ export type Finding = {
   reproduce?: string
 }
 
-const text = (v: unknown) => {
+/** The text of a response or error, or null when it can't be turned into text (so nothing can be said about it). */
+const text = (v: unknown): string | null => {
   try {
-    return typeof v === 'string' ? v : JSON.stringify(v) ?? ''
+    return typeof v === 'string' ? v : (JSON.stringify(v) ?? '')
   } catch {
-    return String(v)
+    return null
   }
+}
+
+const statusOf = (error: unknown) => Number((error as { status?: unknown })?.status ?? (error as { statusCode?: unknown })?.statusCode ?? NaN)
+/** Whether an error is a proper refusal: by default HTTP 401 or 403, or what the write says a refusal looks like. */
+function isRefusal(w: ForbiddenWrite, error: unknown, said: string) {
+  if (w.refusal instanceof RegExp) return w.refusal.test(said)
+  if (typeof w.refusal === 'function') return w.refusal(error)
+  const name = (error as { name?: unknown })?.name
+  return [401, 403].includes(statusOf(error)) || name === 'Forbidden' || name === 'UnauthorizedError'
 }
 
 /** Runs every canary on every read path as every viewer, and every forbidden write. */
@@ -76,6 +93,14 @@ export async function runAccessCheck(input: { viewers: Viewer[]; canaries?: Cana
   for (const c of input.canaries ?? []) {
     if (!c.marker || c.marker.length < 6) {
       findings.push({ check: c.id, title: c.title, status: 'not-checked', severity: c.severity ?? 'high', role: '*', how: 'The canary’s marker is missing or too short to search for reliably.' })
+      continue
+    }
+    if (!c.paths.length) {
+      findings.push({ check: c.id, title: c.title, status: 'not-checked', severity: c.severity ?? 'high', role: '*', how: 'The canary has no read paths, so nothing was looked at.' })
+      continue
+    }
+    if (!input.viewers.some((v) => !c.visibleTo.includes(v.role))) {
+      findings.push({ check: c.id, title: c.title, status: 'not-checked', severity: c.severity ?? 'high', role: '*', how: 'Every viewer given may see this canary, so nobody was checked against it.' })
       continue
     }
     for (const viewer of input.viewers) {
@@ -88,7 +113,12 @@ export async function runAccessCheck(input: { viewers: Viewer[]; canaries?: Cana
           findings.push({ check: c.id, title: c.title, status: 'not-checked', severity: c.severity ?? 'high', role: viewer.role, path: path.name, how: `The read failed, so it couldn't be checked: ${(error as Error).message}`.slice(0, 300) })
           continue
         }
-        const leaked = text(body).includes(c.marker)
+        const seen = text(body)
+        if (seen === null) {
+          findings.push({ check: c.id, title: c.title, status: 'not-checked', severity: c.severity ?? 'high', role: viewer.role, path: path.name, how: `The answer couldn't be turned into text, so it couldn't be searched.` })
+          continue
+        }
+        const leaked = seen.includes(c.marker)
         findings.push({
           check: c.id,
           title: c.title,
@@ -112,15 +142,22 @@ export async function runAccessCheck(input: { viewers: Viewer[]; canaries?: Cana
       await w.attempt(viewer)
       findings.push({ check: w.id, title: w.title, status: 'fail', severity: w.severity ?? 'high', role: w.role, how: `As ${w.role}, this was allowed; the site's rules say it must be refused.`, reproduce: w.reproduce })
     } catch (error) {
-      const said = text((error as { data?: unknown }).data ?? '') + ' ' + text((error as Error).message ?? '')
-      const leak = w.leaks?.test(said)
+      const said = `${text((error as { data?: unknown })?.data ?? '') ?? ''} ${text((error as Error)?.message ?? '') ?? ''}`
+      const leak = Boolean(w.leaks?.test(said))
+      const refused = isRefusal(w, error, said)
+      const status = leak ? 'fail' : refused ? 'pass' : 'not-checked'
+      const code = statusOf(error)
       findings.push({
         check: w.id,
         title: w.title,
-        status: leak ? 'fail' : 'pass',
+        status,
         severity: w.severity ?? 'high',
         role: w.role,
-        how: leak ? `As ${w.role}, it was refused, but the refusal said something it mustn't (matched ${w.leaks}).` : `As ${w.role}, it was refused without saying anything it mustn't.`,
+        how: leak
+          ? `As ${w.role}, it failed, and what it said gives something away (matched ${w.leaks}).`
+          : refused
+            ? `As ${w.role}, it was refused without saying anything it mustn't.`
+            : `As ${w.role}, it failed${Number.isNaN(code) ? '' : ` with HTTP ${code}`}, but not with a refusal, so it can't be told apart from an allowed write that failed for another reason: ${((error as Error)?.message ?? '').slice(0, 160)}. Make the probe valid, or say what the refusal looks like (\`refusal\`).`,
         reproduce: leak ? w.reproduce : undefined,
       })
     }

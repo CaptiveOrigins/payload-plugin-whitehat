@@ -1,6 +1,6 @@
 {
   "name": "@captiveorigins/payload-plugin-whitehat",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Whitehat for Payload: finds security holes in a Payload site, its database, code and UI, with severity-ranked alerts and a checklist that grows with every incident.",
   "homepage": "https://github.com/CaptiveOrigins/payload-plugin-whitehat#readme",
   "bugs": {

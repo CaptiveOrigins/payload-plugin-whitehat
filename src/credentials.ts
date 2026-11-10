@@ -56,10 +56,8 @@ export function forgedCredentials(o: { sessionCookie?: string; extraCookies?: Re
   ]
 }
 
-const better = (forged: number, baseline: number) => {
-  const ok = (s: number) => s >= 200 && s < 300
-  return ok(forged) && !ok(baseline)
-}
+const ok = (s: number) => s >= 200 && s < 300
+const better = (forged: number, baseline: number) => ok(forged) && !ok(baseline)
 
 /** Runs every forgery against every target and reports any that got more than a signed-out visitor. */
 export async function runCredentialCheck(input: { targets: CredentialTarget[]; forgeries?: Forgery[] }): Promise<Finding[]> {
@@ -74,7 +72,14 @@ export async function runCredentialCheck(input: { targets: CredentialTarget[]; f
       findings.push({ check: t.id, title: t.title, status: 'not-checked', severity, role: 'signed-out', how: `The signed-out request failed, so there was nothing to compare with: ${(error as Error).message}`.slice(0, 300) })
       continue
     }
+    // A signed-out visitor already gets a 2xx (a sign-in page, a "back soon" page served as 200): a bypass would look
+    // the same, so without text to look for it can't be seen. Not checked, never passed.
+    const blind = ok(baseline.status) && !(t.secretMarkers ?? []).length
     for (const f of forgeries) {
+      if (blind) {
+        findings.push({ check: t.id, title: t.title, status: 'not-checked', severity, role: 'forged', path: f.name, how: `A signed-out visitor already gets HTTP ${baseline.status}, so a forgery getting through would look the same. Give secretMarkers: text only someone let through would see.` })
+        continue
+      }
       let res: TargetResponse
       try {
         res = await t.request(f.headers)

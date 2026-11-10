@@ -3,7 +3,7 @@ import { MongoMemoryReplSet } from 'mongodb-memory-server'
 import { buildConfig, getPayload, type Payload } from 'payload'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { fingerprint, recordFindings, retest, runSuite, whitehat, type Finding, type WhitehatOptions } from '../src/index.js'
+import { fingerprint, recordFindings, retest, runSuite, scanUserContent, whitehat, type Finding, type WhitehatOptions } from '../src/index.js'
 
 /** A made-up site with one admin and one member; suites return whatever the test sets. */
 let payload: Payload
@@ -18,7 +18,7 @@ const suite = (name: string) => async () => {
   return r ?? []
 }
 const opts: WhitehatOptions = {
-  suites: { access: suite('access'), headers: suite('headers') },
+  suites: { access: suite('access'), headers: suite('headers'), content: suite('content') },
   access: (req) => (req.user as { role?: string } | null)?.role === 'admin',
   onCritical: (alerts) => void told.push(...alerts.map((a) => a.check)),
 }
@@ -125,6 +125,47 @@ describe('retest a selection', () => {
     expect((await call(null, { ids: ['x'] })).status).toBe(403)
     expect((await call(admin, { ids: [] })).status).toBe(400)
     expect((await call(admin, { ids: [String((await alerts())[0]!.id)] })).status).toBe(200)
+  })
+})
+
+describe('resolving what’s gone', () => {
+  it('resolves an alert a full run no longer reports (a fixed record), but not after a run that reported nothing', async () => {
+    const bad = { collection: 'posts', id: 'p1', field: 'body', value: '<script>x()</script>' }
+    results.content = scanUserContent([bad, { collection: 'posts', id: 'p2', field: 'body', value: 'fine' }])
+    await runSuite(payload, opts, 'content')
+    const open = async () => (await alerts()).filter((x) => x.suite === 'content' && x.status === 'open').map((x) => x.check)
+    expect(await open()).toEqual(['stored-xss'])
+    // A suite that reports nothing confirmed nothing: the alert stays, and the empty run is itself not checked.
+    results.content = []
+    await runSuite(payload, opts, 'content')
+    expect(await open()).toEqual(expect.arrayContaining(['stored-xss', 'suite:content']))
+    // The record is cleaned: a full run without it resolves it (and the not-checked one too).
+    results.content = scanUserContent([{ ...bad, value: 'cleaned' }])
+    const r = await runSuite(payload, opts, 'content')
+    expect(r.resolved).toBe(2)
+    expect(await open()).toEqual([])
+  })
+
+  it('leaves alerts alone when findings come from elsewhere (not a full run)', async () => {
+    await recordFindings(payload, opts, 'ci-partial', [fail('one'), fail('two')])
+    await recordFindings(payload, opts, 'ci-partial', [fail('one')])
+    expect((await alerts()).filter((x) => x.suite === 'ci-partial' && x.status === 'open')).toHaveLength(2)
+  })
+})
+
+describe('write probes', () => {
+  it('refuses to start with a write suite unless allowWriteProbes is on', () => {
+    const writer = { run: async () => [], writes: true as const }
+    expect(() => whitehat({ ...opts, suites: { probe: writer } })({ collections: [] } as never)).toThrow(/allowWriteProbes/)
+    expect(() => whitehat({ ...opts, suites: { probe: writer }, allowWriteProbes: true })({ collections: [] } as never)).not.toThrow()
+  })
+
+  it('records a write suite as not checked where write probes are off, without running it', async () => {
+    let ran = false
+    const o = { ...opts, suites: { probe: { run: async () => ((ran = true), [fail('w')]), writes: true as const } } }
+    await runSuite(payload, o, 'probe')
+    expect(ran).toBe(false)
+    expect((await alerts()).find((x) => x.check === 'suite:probe')).toMatchObject({ lastResult: 'not-checked' })
   })
 })
 

@@ -13,10 +13,20 @@ import type { Finding } from './index.js'
  *   behind the selected alerts run, and their results update every alert they touch.
  */
 export type Suite = () => Promise<Finding[]>
+/** A suite that writes (forbidden-write probes). Refused unless `allowWriteProbes` is on. */
+export type WriteSuite = { run: Suite; writes: true }
 
 export type WhitehatOptions = {
-  /** The site's checks, by name. Retesting an alert runs the suite that found it. */
-  suites: Record<string, Suite>
+  /**
+   * The site's checks, by name. Retesting an alert runs the suite that found it. Declare a suite that tries writes
+   * as `{ run, writes: true }`: those only run where `allowWriteProbes` is on.
+   */
+  suites: Record<string, Suite | WriteSuite>
+  /**
+   * Allow suites that write. Default false, and the plugin refuses to start with a write suite while it's off.
+   * Turn it on only where the database is a throwaway test copy: "Retest selected" runs suites inside the site.
+   */
+  allowWriteProbes?: boolean
   /** Who may see alerts, snooze them and retest. Required: nobody gets in by default. */
   access: (req: PayloadRequest) => boolean | Promise<boolean>
   /** Called with alerts that just opened at critical severity (for example, to tell the owner). */
@@ -28,6 +38,9 @@ export type WhitehatOptions = {
 }
 
 export const fingerprint = (f: Pick<Finding, 'check' | 'role' | 'path'>) => [f.check, f.role, f.path ?? ''].join(' | ')
+
+const writes = (s: Suite | WriteSuite | undefined): s is WriteSuite => Boolean(s && typeof s === 'object' && s.writes)
+const runOf = (s: Suite | WriteSuite) => (writes(s) ? s.run : s)
 
 const DAY = 86_400_000
 
@@ -109,7 +122,11 @@ function alertsCollection(o: WhitehatOptions): CollectionConfig {
 }
 
 /** Records one suite's findings: updates alerts by fingerprint, opens new ones, resolves ones that now pass. */
-export async function recordFindings(payload: Payload, o: WhitehatOptions, suite: string, findings: Finding[], req?: PayloadRequest): Promise<{ opened: number; updated: number; resolved: number; critical: { id: string; title: string; check: string; how: string }[] }> {
+/**
+ * `complete`: these are everything the suite found on a full run, so its open alerts that aren't among them are
+ * resolved ("no longer found"). Leave it off for findings from elsewhere (a partial CI upload, say).
+ */
+export async function recordFindings(payload: Payload, o: WhitehatOptions, suite: string, findings: Finding[], req?: PayloadRequest, { complete = false }: { complete?: boolean } = {}): Promise<{ opened: number; updated: number; resolved: number; critical: { id: string; title: string; check: string; how: string }[] }> {
   const slug = (o.slug ?? 'whitehat-alerts') as never
   const now = new Date()
   const ctx = { whitehat: true }
@@ -139,6 +156,16 @@ export async function recordFindings(payload: Payload, o: WhitehatOptions, suite
       if (fnd.severity === 'critical') critical.push({ id: String(doc.id), title: fnd.title, check: fnd.check, how: fnd.how })
     }
   }
+  if (complete && findings.length) {
+    // A fixed record, a rebuilt bundle, a removed canary: the suite ran in full and didn't report it, so it's gone.
+    const seen = new Set(findings.map(fingerprint))
+    const { docs } = await payload.find({ collection: slug, where: { and: [{ suite: { equals: suite } }, { status: { not_equals: 'resolved' } }] }, limit: 0, pagination: false, depth: 0, overrideAccess: true })
+    for (const d of docs as unknown as { id: string; fingerprint: string }[]) {
+      if (seen.has(d.fingerprint)) continue
+      await payload.update({ collection: slug, id: String(d.id), data: { status: 'resolved', lastResult: 'pass', lastSeen: now.toISOString(), how: 'No longer found: the suite ran in full and didn’t report it.', snoozedUntil: null, snoozeReason: null } as never, overrideAccess: true, context: ctx, req })
+      resolved++
+    }
+  }
   if (critical.length && o.onCritical) await o.onCritical(critical, { payload })
   return { opened, updated, resolved, critical }
 }
@@ -147,13 +174,19 @@ export async function recordFindings(payload: Payload, o: WhitehatOptions, suite
 export async function runSuite(payload: Payload, o: WhitehatOptions, name: string, req?: PayloadRequest) {
   const suite = o.suites[name]
   if (!suite) throw new Error(`No Whitehat suite called "${name}".`)
+  const notChecked = (how: string): Finding[] => [{ check: `suite:${name}`, title: `Suite "${name}" couldn't run`, severity: 'high', status: 'not-checked', role: '*', how: how.slice(0, 300) }]
+  if (writes(suite) && !o.allowWriteProbes) return { suite: name, ...(await recordFindings(payload, o, name, notChecked('It tries writes, and write probes are off here (allowWriteProbes). Run it against a throwaway test database.'), req)) }
   let findings: Finding[]
+  let complete = false
   try {
-    findings = await suite()
+    findings = await runOf(suite)()
+    complete = findings.length > 0
+    // A suite that reports nothing confirmed nothing: its open alerts stay as they are.
+    if (!findings.length) findings = notChecked('It finished without reporting anything, so nothing could be confirmed.')
   } catch (error) {
-    findings = [{ check: `suite:${name}`, title: `Suite "${name}" couldn't run`, severity: 'high', status: 'not-checked', role: '*', how: `It failed before finishing: ${(error as Error).message}`.slice(0, 300) }]
+    findings = notChecked(`It failed before finishing: ${(error as Error).message}`)
   }
-  return { suite: name, ...(await recordFindings(payload, o, name, findings, req)) }
+  return { suite: name, ...(await recordFindings(payload, o, name, findings, req, { complete })) }
 }
 
 /** Retests a selection: runs each suite behind the selected alerts once, then reports where each alert stands. */
@@ -171,6 +204,9 @@ export async function retest(payload: Payload, o: WhitehatOptions, ids: string[]
 export const whitehat =
   (o: WhitehatOptions): Plugin =>
   (config: Config): Config => {
+    const writers = Object.entries(o.suites).filter(([, s]) => writes(s)).map(([n]) => n)
+    if (writers.length && !o.allowWriteProbes)
+      throw new Error(`whitehat: ${writers.map((n) => `"${n}"`).join(', ')} tries writes, and allowWriteProbes is off. Turn it on only where the database is a throwaway test copy.`)
     const endpoint: Endpoint = {
       path: '/whitehat/retest',
       method: 'post',
