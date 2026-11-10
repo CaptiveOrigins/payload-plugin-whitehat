@@ -8,6 +8,8 @@
 export { payloadReadPaths, type PayloadReadOptions } from './payload.js'
 export { formatReport } from './report.js'
 export { forgedCredentials, runCredentialCheck, type CredentialTarget, type Forgery, type TargetResponse } from './credentials.js'
+export { checkAdminExposure, checkClientSecrets, checkCookies, checkCors, checkGraphql, checkHeaders, checkOpenRedirects, checkUploads, scanUserContent, CONTENT_PATTERNS, SECRET_PATTERNS, type Answer, type Ask } from './checks.js'
+export { fingerprint, recordFindings, retest, runSuite, whitehat, type Suite, type WhitehatOptions } from './alerts.js'
 
 export type Severity = 'critical' | 'high' | 'medium' | 'low' | 'info'
 export const SEVERITIES: Severity[] = ['critical', 'high', 'medium', 'low', 'info']

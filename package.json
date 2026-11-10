@@ -1,6 +1,6 @@
 {
   "name": "@captiveorigins/payload-plugin-whitehat",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Whitehat for Payload: finds security holes in a Payload site, its database, code and UI, with severity-ranked alerts and a checklist that grows with every incident.",
   "homepage": "https://github.com/CaptiveOrigins/payload-plugin-whitehat#readme",
   "bugs": {
@@ -26,6 +26,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./client": {
+      "types": "./dist/client/index.d.ts",
+      "import": "./dist/client/index.js"
     }
   },
   "main": "./dist/index.js",
@@ -47,12 +51,34 @@
     "prepublishOnly": "npm run typecheck && npm test"
   },
   "peerDependencies": {
-    "payload": "^3.80.0"
+    "payload": "^3.80.0",
+    "@payloadcms/ui": "^3.80.0",
+    "react": "^19.0.0",
+    "next": ">=15"
   },
   "devDependencies": {
+    "@payloadcms/db-mongodb": "^3.92.1",
+    "@payloadcms/ui": "^3.92.1",
     "@types/node": "^24.0.0",
+    "@types/react": "^19.3.0",
+    "graphql": "^16.15.0",
+    "mongodb-memory-server": "^11.3.0",
+    "next": "^16.4.5",
     "payload": "3.92.1",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
     "typescript": "^5.9.0",
     "vitest": "^5.1.0"
+  },
+  "peerDependenciesMeta": {
+    "@payloadcms/ui": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    },
+    "next": {
+      "optional": true
+    }
   }
 }

@@ -2,6 +2,27 @@
 
 Kept by this repo's owning session, per `~/Code/CLAUDE.md`, "Test self-audits". Newest first.
 
+## 2026-11-10: 0.2.0
+
+28 tests: `access.test.ts` (5), `credentials.test.ts` (4), `checks.test.ts` (10), `alerts.test.ts` (9, real Payload 3.92 and in-memory MongoDB).
+
+| Promise | Test |
+| --- | --- |
+| Headers, cookie flags, CORS, open redirects, GraphQL introspection, admin indexing: pass and fail cases | checks: one test each |
+| A check whose request fails is "not checked", never passed | checks: "a check whose request fails…" |
+| Secrets in bundles and scripts in user text are found without copying them | checks: "client secrets…", "user-written content…" |
+| SVG and unrestricted uploads flagged | checks: "uploads…" |
+| One alert per finding; updated on re-run; resolved on pass; plain passes not stored | alerts: "opens one alert per finding…" |
+| A throwing suite is recorded "not checked" | alerts: "a suite that throws…" |
+| Critical alerts reported once | alerts: "tells someone about a new critical alert once…" |
+| Bulk snooze over a selection holds through later runs; reason, future end and 90-day limit enforced | alerts: "bulk snooze" (2) |
+| No access, no alerts; edits change only the snooze | alerts: "people without access…" |
+| Retest runs only the selected alerts' suites; endpoint refuses without access or a selection | alerts: "retest a selection" (2) |
+
+Checked outside the tests: the admin list, Retest selected (with its result kept across the reload) and a bulk snooze sent the way bulk Edit sends it, in a real Payload admin on a local copy of a site with made-up findings. This also found that Payload hid the snooze refusals ("Something went wrong"); they now show the reason. axe on the list found issues only in Payload's own list markup.
+
+Gaps: dependency advisories (planned); GraphQL depth and complexity (planned); the admin's bulk Edit drawer was opened but driven by the request, not by clicks.
+
 ## 2026-11-09: first audit (0.1.0)
 
 | Promise | Tests (`test/access.test.ts`) |
