@@ -141,7 +141,7 @@ export function checkUploads(collections: { slug: string; upload?: unknown }[]):
     if (!mimes) out.push(f('uploads', 'Upload types are limited', 'medium', false, c.slug, 'Any file type can be uploaded: no mimeTypes list.'))
     else {
       const svg = mimes.some((m) => /svg|image\/\*|\*\/\*/i.test(m))
-      out.push(f('uploads', 'SVG uploads can’t carry scripts', 'high', !svg, c.slug, svg ? `It accepts ${mimes.filter((m) => /svg|\*/.test(m)).join(', ')}; SVGs can carry scripts unless they're sanitised.` : 'No SVGs accepted.'))
+      out.push(f('uploads', 'SVG uploads can’t carry scripts', 'high', !svg, c.slug, svg ? `It accepts ${mimes.filter((m) => /svg|\*/.test(m)).join(', ')}; SVGs can carry scripts unless they're sanitized.` : 'No SVGs accepted.'))
     }
   }
   return out
