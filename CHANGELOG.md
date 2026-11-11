@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- **Only an exact `true` from `access` lets someone see, snooze or retest alerts (2026-11-11).** Any truthy answer used to count, and the answer went to Payload as the alerts' read and update access as it was, so an object that looked like a query became the read filter. A thrown error answered 500. Now anything but `true`, an error included, is a 403, and the answer is never handed to Payload. There is still no default: `access` stays required. A site whose `access` returns something other than `true` for people it means to let in must return `true`.
+
+Tested: 38 tests (2 new), 5 mutation checks.
+
 ## 0.2.1 (not released yet; 0.2.0 wasn't published, so they go out together)
 
 From a security review of 0.2.0. Whitehat's rule is that a check it couldn't make is "not checked", never "passed"; these places broke it.

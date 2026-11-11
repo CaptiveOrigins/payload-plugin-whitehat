@@ -27,7 +27,10 @@ export type WhitehatOptions = {
    * Turn it on only where the database is a throwaway test copy: "Retest selected" runs suites inside the site.
    */
   allowWriteProbes?: boolean
-  /** Who may see alerts, snooze them and retest. Required: nobody gets in by default. */
+  /**
+   * Who may see alerts, snooze them and retest. Required: nobody gets in by default. Only an answer of exactly `true`
+   * lets someone in; anything else, a thrown error included, is a no. Nobody who isn't signed in gets in.
+   */
   access: (req: PayloadRequest) => boolean | Promise<boolean>
   /** Called with alerts that just opened at critical severity (for example, to tell the owner). */
   onCritical?: (alerts: { id: string; title: string; check: string; how: string }[], req: { payload: Payload }) => Promise<void> | void
@@ -44,6 +47,19 @@ const runOf = (s: Suite | WriteSuite) => (writes(s) ? s.run : s)
 
 const DAY = 86_400_000
 
+/**
+ * The site's `access` answered exactly `true` for a signed-in person. Any other answer (a truthy value, an object
+ * that looks like a query) or a thrown or rejected error is a no, so a broken rule refuses instead of answering 500.
+ */
+export async function hasAccess(o: Pick<WhitehatOptions, 'access'>, req: PayloadRequest): Promise<boolean> {
+  if (!req.user) return false
+  try {
+    return (await o.access(req)) === true
+  } catch {
+    return false
+  }
+}
+
 /** Why a snooze can't be saved, or null: an end in the future within the limit, and a reason. */
 function snoozeProblem(until: unknown, reason: unknown, max: number): string | null {
   if (!until) return null
@@ -55,7 +71,8 @@ function snoozeProblem(until: unknown, reason: unknown, max: number): string | n
 }
 
 function alertsCollection(o: WhitehatOptions): CollectionConfig {
-  const allowed: Access = async ({ req }) => Boolean(req.user) && (await o.access(req))
+  // Only ever `true` or `false`: the site's answer is never handed to Payload, so it can't become a read filter.
+  const allowed: Access = ({ req }) => hasAccess(o, req)
   const max = o.maxSnoozeDays ?? 90
   return {
     slug: o.slug ?? 'whitehat-alerts',
@@ -211,7 +228,7 @@ export const whitehat =
       path: '/whitehat/retest',
       method: 'post',
       handler: async (req) => {
-        if (!req.user || !(await o.access(req))) return Response.json({ errors: [{ message: 'Not allowed.' }] }, { status: 403 })
+        if (!(await hasAccess(o, req))) return Response.json({ errors: [{ message: 'Not allowed.' }] }, { status: 403 })
         const body = (await req.json?.().catch(() => null)) as { ids?: unknown } | null
         const ids = Array.isArray(body?.ids) ? body!.ids.map(String).filter((s) => /^[A-Za-z0-9_-]{1,64}$/.test(s)) : []
         if (!ids.length) return Response.json({ errors: [{ message: 'Choose at least one alert.' }] }, { status: 400 })

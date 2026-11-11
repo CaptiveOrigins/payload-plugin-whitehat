@@ -128,6 +128,67 @@ describe('retest a selection', () => {
   })
 })
 
+describe('only an exact yes from access (2026-11-11)', () => {
+  // Each a no: truthy values, objects (one shaped like a query, which must not become the read filter), and errors.
+  const noes: [string, () => unknown][] = [
+    ['1', () => 1],
+    ["'yes'", () => 'yes'],
+    ['{}', () => ({})],
+    ['a query-shaped object', () => ({ severity: { equals: 'low' } })],
+    ['a thrown error', () => {
+      throw new Error('directory down')
+    }],
+    ['a rejected promise', async () => {
+      throw new Error('directory down')
+    }],
+  ]
+  /** Runs `body` with the site's `access` answering `answer`, then puts the site's rule back. */
+  const answering = async (answer: () => unknown, body: () => Promise<void>) => {
+    const before = opts.access
+    opts.access = answer as never
+    try {
+      await body()
+    } finally {
+      opts.access = before
+    }
+  }
+  const status = (p: Promise<unknown>) => p.then(() => 200, (e: { status?: number }) => e.status ?? 500)
+  const ep = () => payload.config.endpoints.find((e) => e.path === '/whitehat/retest')!
+  const call = (user: unknown, body: unknown) => ep().handler({ user, payload, json: async () => body } as never) as Promise<Response>
+
+  it('refuses reads, snoozes and retests with 403 for anything but true, never a 500, and changes nothing', async () => {
+    const one = (await alerts()).find((x) => x.status === 'open')!
+    const id = String(one.id)
+    let ran = 0
+    const before = opts.suites[String(one.suite)]
+    opts.suites[String(one.suite)] = async () => (ran++, [])
+    try {
+      for (const [label, answer] of noes)
+        await answering(answer, async () => {
+          expect(await status(payload.find({ collection: 'whitehat-alerts' as never, user: admin as never, overrideAccess: false })), label).toBe(403)
+          expect(await status(payload.findByID({ collection: 'whitehat-alerts' as never, id, user: admin as never, overrideAccess: false })), label).toBe(403)
+          const snooze = { snoozedUntil: new Date(Date.now() + 86_400_000).toISOString(), snoozeReason: 'not now' }
+          expect(await status(payload.update({ collection: 'whitehat-alerts' as never, id, data: snooze as never, user: admin as never, overrideAccess: false })), label).toBe(403)
+          expect((await call(admin, { ids: [id] })).status, label).toBe(403)
+        })
+    } finally {
+      opts.suites[String(one.suite)] = before!
+    }
+    expect(ran).toBe(0)
+    const after = (await alerts()).find((x) => String(x.id) === id)!
+    expect(after).toMatchObject({ status: one.status, snoozedUntil: one.snoozedUntil ?? null })
+  })
+
+  it('lets an exact true read every alert, and refuses someone not signed in even then', async () => {
+    await answering(() => true, async () => {
+      const all = (await payload.find({ collection: 'whitehat-alerts' as never, user: admin as never, overrideAccess: false, limit: 100 })).totalDocs
+      expect(all).toBe((await alerts()).length)
+      expect(await status(payload.find({ collection: 'whitehat-alerts' as never, overrideAccess: false }))).toBe(403)
+      expect((await call(null, { ids: ['x'] })).status).toBe(403)
+    })
+  })
+})
+
 describe('resolving what’s gone', () => {
   it('resolves an alert a full run no longer reports (a fixed record), but not after a run that reported nothing', async () => {
     const bad = { collection: 'posts', id: 'p1', field: 'body', value: '<script>x()</script>' }

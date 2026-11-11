@@ -20,7 +20,7 @@ Whitehat for Payload: finds security holes in a Payload site, its database, code
   - **Snooze several at once** with the admin's own bulk Edit: an end date (at most 90 days) and a reason are required, and the snooze holds through later runs until it ends. People can only change the snooze, never what was found.
   - **Retest selected** re-runs only the checks behind the selected alerts.
   - New critical alerts call `onCritical` once, so the site can tell the owner.
-  - Nobody sees alerts without the site's `access`.
+  - Nobody sees alerts without the site's `access`, and only an answer of exactly `true` lets someone in. Anything else is a no: `false`, `1`, `'yes'`, an object (one shaped like a query included, so it can't become a read filter), or an error thrown or rejected. A broken rule refuses with 403 instead of a 500, and nobody who isn't signed in gets in, whatever `access` says. Since 2026-11-11 (unreleased): before, any truthy answer let someone in, and an object went to Payload as the alerts' read and update access.
 - **It only finds.** It never fixes anything, changes data or settings, or touches anything outside the site you run it against.
 
 Run it against a throwaway or test database. Never point write probes at a live site. A suite that tries writes is declared as `{ run, writes: true }`, and the plugin refuses to start with one unless `allowWriteProbes: true`, which belongs only on a throwaway test copy: **Retest selected** runs suites inside the site.
