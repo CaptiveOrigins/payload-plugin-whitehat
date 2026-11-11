@@ -25,6 +25,14 @@ Whitehat for Payload: finds security holes in a Payload site, its database, code
 
 Run it against a throwaway or test database. Never point write probes at a live site. A suite that tries writes is declared as `{ run, writes: true }`, and the plugin refuses to start with one unless `allowWriteProbes: true`, which belongs only on a throwaway test copy: **Retest selected** runs suites inside the site.
 
+## On its own, and with others
+
+**On its own:** the checks are plain functions that take your site's read and write functions, so they run with no other plugin. The `whitehat` plugin adds the alerts collection and needs your `access`.
+
+**Works with:** nothing is wired to another Captive Origins plugin. It tests whatever access rules the site has, including ones other plugins add. Hats' design plans a Whitehat canary for it: an admin wearing Member must not read admin-only records.
+
+**Family:** It's part of the **Defense** family (a working draft): plugins designed to sit together to find and stop abuse. The other member, Guardrails (rate limits), isn't built yet.
+
 ## Use
 
 ```ts
