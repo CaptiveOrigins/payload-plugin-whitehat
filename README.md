@@ -36,7 +36,7 @@ Run it against a throwaway or test database. Never point write probes at a live 
 ## Use
 
 ```ts
-import { formatReport, payloadReadPaths, runAccessCheck } from '@captiveorigins/payload-plugin-whitehat'
+import { formatReport, payloadReadPaths, runAccessCheck } from '@extantape/payload-plugin-whitehat'
 
 const findings = await runAccessCheck({
   viewers: [{ role: 'signed-out', user: null }, { role: 'member', user: member }, { role: 'staff', user: admin }],

@@ -1,10 +1,10 @@
 {
-  "name": "@captiveorigins/payload-plugin-whitehat",
+  "name": "@extantape/payload-plugin-whitehat",
   "version": "0.2.2",
   "description": "Whitehat for Payload: finds security holes in a Payload site, its database, code and UI, with severity-ranked alerts and a checklist that grows with every incident.",
-  "homepage": "https://github.com/CaptiveOrigins/payload-plugin-whitehat#readme",
+  "homepage": "https://github.com/ExtantApe/payload-plugin-whitehat#readme",
   "bugs": {
-    "url": "https://github.com/CaptiveOrigins/payload-plugin-whitehat/issues"
+    "url": "https://github.com/ExtantApe/payload-plugin-whitehat/issues"
   },
   "keywords": [
     "payload",
@@ -19,7 +19,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/CaptiveOrigins/payload-plugin-whitehat.git"
+    "url": "git+https://github.com/ExtantApe/payload-plugin-whitehat.git"
   },
   "type": "module",
   "exports": {

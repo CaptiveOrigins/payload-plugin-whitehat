@@ -82,7 +82,7 @@ function alertsCollection(o: WhitehatOptions): CollectionConfig {
       group: o.adminGroup,
       defaultColumns: ['title', 'severity', 'status', 'snoozedUntil', 'lastSeen'],
       description: 'Found by Whitehat. To snooze several, select them and use Edit: set "Snoozed until" and a reason. To check again, select them and press Retest selected.',
-      components: { beforeListTable: ['@captiveorigins/payload-plugin-whitehat/client#RetestSelected'] },
+      components: { beforeListTable: ['@extantape/payload-plugin-whitehat/client#RetestSelected'] },
     },
     access: { read: allowed, update: allowed, create: () => false, delete: () => false },
     fields: [
