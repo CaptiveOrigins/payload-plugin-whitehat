@@ -11,7 +11,7 @@ Run 2026-11-09 by the Web Platform session, before the repo goes public (per ~/C
 | Build output, dependencies, env files committed | None (dist/, node_modules/, .env are ignored) |
 | Private terms (`scripts/leak-check.sh` locally, with ~/.leak-private-terms) | Passed |
 | Leak check in CI | Yes, first step of `.github/workflows/ci.yml` |
-| LICENSE | MIT, Copyright (c) 2026 Captive Origins |
+| LICENSE | MIT, now "Copyright (c) 2026 EXTANT APE" |
 | README status line says what has and hasn't been tested | Yes |
 | Findings about a real site | None in this repo |
 
